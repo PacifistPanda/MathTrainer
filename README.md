@@ -11,45 +11,69 @@ A competitive mental arithmetic training app built with Python and tkinter.
 - **Competitive stats:** Daily high, all-time high, vs last game, fastest/slowest game, fastest solve
 - **Per-problem timing** for precision performance tracking
 - **Available in:** English, German, French, Spanish
+- **Cross-platform:** Windows, Linux, macOS
 
 ## Downloads
 
 Grab the latest release from [Releases](../../releases):
 
-| Platform | File | Description |
-|----------|------|-------------|
-| Windows | `MathTrainer_EN.exe` | Standalone executable (English) |
-| Windows | `MathTrainer_DE.exe` | Standalone executable (German) |
-| Windows | `MathTrainer_FR.exe` | Standalone executable (French) |
-| Windows | `MathTrainer_ES.exe` | Standalone executable (Spanish) |
-| Linux | `MathTrainer_EN` | Standalone ELF binary (English, built on Arch/CachyOS) |
-| Linux | `MathTrainer_DE` | Standalone ELF binary (German) |
-| Linux | `MathTrainer_FR` | Standalone ELF binary (French) |
-| Linux | `MathTrainer_ES` | Standalone ELF binary (Spanish) |
+| Platform | English | German | French | Spanish |
+|----------|---------|--------|--------|---------|
+| Windows | `MathTrainer_EN.exe` | `MathTrainer_DE.exe` | `MathTrainer_FR.exe` | `MathTrainer_ES.exe` |
+| Linux | `MathTrainer_EN` | `MathTrainer_DE` | `MathTrainer_FR` | `MathTrainer_ES` |
+| macOS | `MathTrainer_EN_macos` | `MathTrainer_DE_macos` | `MathTrainer_FR_macos` | `MathTrainer_ES_macos` |
+
+## Project Structure
+
+```
+MathTrainer/
+├── src/                        # Source files
+│   ├── multiply_trainer_EN.py  # English
+│   ├── multiply_trainer_de.py  # German
+│   ├── multiply_trainer_fr.py  # French
+│   └── multiply_trainer_es.py  # Spanish
+├── assets/
+│   └── math_icon.ico           # Application icon
+├── scripts/                    # Build scripts
+│   ├── build_linux.sh
+│   └── build_windows.bat
+├── dist/                       # Built binaries (Linux)
+├── .github/workflows/
+│   └── release.yml             # macOS CI builds
+├── README.md
+└── .gitignore
+```
 
 ## Running from Source
 
 Requires Python 3.8+ (tkinter included by default).
 
-### Available Languages
-
-| Command | Language |
-|---------|----------|
-| `python multiply_trainer_EN.py` | English |
-| `python multiply_trainer_DE.py` | German |
-| `python multiply_trainer_FR.py` | French |
-| `python multiply_trainer_ES.py` | Spanish |
+```bash
+cd src
+python multiply_trainer_EN.py   # English
+python multiply_trainer_de.py   # German
+python multiply_trainer_fr.py   # French
+python multiply_trainer_es.py   # Spanish
+```
 
 ## Building
 
-### Windows
-```bat
-.\build_windows.bat
+### All platforms
+
+```bash
+# Linux
+./scripts/build_linux.sh
+
+# Windows
+scripts\build_windows.bat
+
+# macOS — automated via GitHub Actions on release
 ```
 
-### Linux
+### Manual build (any language)
+
 ```bash
-./build_linux.sh
+pyinstaller --onefile --noconsole --icon=assets/math_icon.ico --name=MathTrainer_EN src/multiply_trainer_EN.py
 ```
 
 ## Data Storage
@@ -64,7 +88,8 @@ Settings and game history are saved to `~/.config/MathTrainer/data.json`.
 - Repositioned pause button to settings row with red/grey state colors
 - Fixed answer entry field to accommodate all result sizes
 - Added German, French, and Spanish language versions
-- Renamed source files with language suffixes (_EN, _DE, _FR, _ES)
+- Added macOS builds via GitHub Actions
+- Reorganized project structure
 
 ### v1.0
 - Initial release with 1-digit, 2-digit, and 4-digit modes
