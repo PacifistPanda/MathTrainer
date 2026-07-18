@@ -28,6 +28,15 @@ Requires Python 3.8+ (tkinter included by default).
 python multiply_trainer.py
 ```
 
+### Available Languages
+
+| File | Language |
+|------|----------|
+| `multiply_trainer.py` | English |
+| `multiply_trainer_de.py` | German |
+| `multiply_trainer_fr.py` | French |
+| `multiply_trainer_es.py` | Spanish |
+
 ## Building
 
 ### Windows
@@ -51,6 +60,7 @@ Settings and game history are saved to `~/.config/MathTrainer/data.json`.
 - Added random digit mode (🎲) — each problem picks 1–4 digits randomly
 - Repositioned pause button to settings row with red/grey state colors
 - Fixed answer entry field to accommodate all result sizes
+- Added German, French, and Spanish language versions
 
 ### v1.0
 - Initial release with 1-digit, 2-digit, and 4-digit modes
