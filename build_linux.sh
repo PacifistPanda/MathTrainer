@@ -5,7 +5,7 @@
 pyinstaller --noconfirm --onefile --noconsole \
     --name MathTrainer \
     --clean \
-    multiply_trainer.py
+    multiply_trainer_EN.py
 
 echo ""
 echo "Build complete: dist/MathTrainer"

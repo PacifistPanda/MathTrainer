@@ -6,7 +6,7 @@ pyinstaller --noconfirm --onefile --noconsole ^
     --icon math_icon.ico ^
     --name MathTrainer ^
     --clean ^
-    multiply_trainer.py
+    multiply_trainer_EN.py
 
 echo.
 echo Build complete: dist\MathTrainer.exe

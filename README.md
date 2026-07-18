@@ -10,6 +10,7 @@ A competitive mental arithmetic training app built with Python and tkinter.
 - **Light/dark theme** with live switching, powered by OpenCode's color palette
 - **Competitive stats:** Daily high, all-time high, vs last game, fastest/slowest game, fastest solve
 - **Per-problem timing** for precision performance tracking
+- **Available in:** English, German, French, Spanish
 
 ## Downloads
 
@@ -17,36 +18,38 @@ Grab the latest release from [Releases](../../releases):
 
 | Platform | File | Description |
 |----------|------|-------------|
-| Windows | `MathTrainer.exe` | Standalone executable, no install needed |
-| Linux | `MathTrainer` | Standalone ELF binary (built on Arch/CachyOS) |
+| Windows | `MathTrainer_EN.exe` | Standalone executable (English) |
+| Windows | `MathTrainer_DE.exe` | Standalone executable (German) |
+| Windows | `MathTrainer_FR.exe` | Standalone executable (French) |
+| Windows | `MathTrainer_ES.exe` | Standalone executable (Spanish) |
+| Linux | `MathTrainer_EN` | Standalone ELF binary (English, built on Arch/CachyOS) |
+| Linux | `MathTrainer_DE` | Standalone ELF binary (German) |
+| Linux | `MathTrainer_FR` | Standalone ELF binary (French) |
+| Linux | `MathTrainer_ES` | Standalone ELF binary (Spanish) |
 
 ## Running from Source
 
 Requires Python 3.8+ (tkinter included by default).
 
-```bash
-python multiply_trainer.py
-```
-
 ### Available Languages
 
-| File | Language |
-|------|----------|
-| `multiply_trainer.py` | English |
-| `multiply_trainer_de.py` | German |
-| `multiply_trainer_fr.py` | French |
-| `multiply_trainer_es.py` | Spanish |
+| Command | Language |
+|---------|----------|
+| `python multiply_trainer_EN.py` | English |
+| `python multiply_trainer_DE.py` | German |
+| `python multiply_trainer_FR.py` | French |
+| `python multiply_trainer_ES.py` | Spanish |
 
 ## Building
 
 ### Windows
 ```bat
-pyinstaller --onefile --noconsole --icon=math_icon.ico --name=MathTrainer multiply_trainer.py
+.\build_windows.bat
 ```
 
 ### Linux
 ```bash
-pyinstaller --onefile --icon=math_icon.ico --name=MathTrainer multiply_trainer.py
+./build_linux.sh
 ```
 
 ## Data Storage
@@ -61,6 +64,7 @@ Settings and game history are saved to `~/.config/MathTrainer/data.json`.
 - Repositioned pause button to settings row with red/grey state colors
 - Fixed answer entry field to accommodate all result sizes
 - Added German, French, and Spanish language versions
+- Renamed source files with language suffixes (_EN, _DE, _FR, _ES)
 
 ### v1.0
 - Initial release with 1-digit, 2-digit, and 4-digit modes
