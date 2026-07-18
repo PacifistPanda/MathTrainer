@@ -4,6 +4,10 @@ on:
   release:
     types: [created]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to upload to (e.g. v1.1.0)"
+        required: false
 
 permissions:
   contents: write
@@ -34,13 +38,27 @@ jobs:
       - name: Build Spanish
         run: pyinstaller --onefile --noconsole --name=MathTrainer_ES multiply_trainer_es.py
 
-      - name: Upload to release
+      - name: Determine tag
+        id: tag
+        run: |
+          if [ -n "${{ github.event.release.tag_name }}" ]; then
+            echo "tag=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+          elif [ -n "${{ inputs.tag }}" ]; then
+            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            TAG=$(gh release list --repo "${{ github.repository }}" --limit 1 --json tagName --jq '.[0].tagName')
+            echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload to release
         run: |
-          gh release upload "${{ github.event.release.tag_name }}" \
+          gh release upload "${{ steps.tag.outputs.tag }}" \
             dist/MathTrainer_EN \
             dist/MathTrainer_DE \
             dist/MathTrainer_FR \
             dist/MathTrainer_ES \
             --repo "${{ github.repository }}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
