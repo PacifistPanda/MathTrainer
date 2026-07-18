@@ -3,6 +3,7 @@ Math Trainer — A competitive mental arithmetic training application.
 
 Features:
     - Five modes: addition (+), subtraction (−), multiplication (×), division (÷), random (🎲)
+    - Five difficulty levels: 1-digit, 2-digit, 3-digit, 4-digit, and random
     - Configurable time limit (2–30s per problem) and question count (0 = infinite)
     - Light/dark theme toggle with full live-switching
     - Per-game and per-problem timing for competitive stats
@@ -14,17 +15,18 @@ Architecture:
     Data persistence via JSON at ~/.config/MathTrainer/data.json.
 
     Layout:
-        ┌─────────────────────────────────┐
-        │ Mode: + − × ÷ 🎲    ☀️/🌙      │  ← mode_row
-        │ Time: [10] Count: [0](0=∞) [▶] │  ← settings_row
-        ├─────────────────────────────────┤
-        │                                 │
-        │           8 × 7                 │  ← problem_label (or stats on finish)
-        │          [____]                 │  ← answer_entry
-        │     ⏱ 8s        ✓ Correct!     │  ← timer + feedback
-        ├─────────────────────────────────┤
-        │ Score: 5/8   Best: 82%  [⏸]   │  ← bottom bar
-        └─────────────────────────────────┘
+        ┌──────────────────────────────────────┐
+        │ Mode: + − × ÷ 🎲        ☀️/🌙      │  ← mode_row
+        │ Digits: 1  2  3  4  🎲               │  ← digits_row
+        │ Time: [10] Count: [0](0=∞)   [🚀]  │  ← settings_row
+        ├──────────────────────────────────────┤
+        │                                      │
+        │              8 × 7                   │  ← problem_label (or stats on finish)
+        │             [____]                   │  ← answer_entry
+        │        ⏱ 8s        ✓ Correct!       │  ← timer + feedback
+        ├──────────────────────────────────────┤
+        │ Score: 5/8   Best: 82%  [⏸]        │  ← bottom bar
+        └──────────────────────────────────────┘
 
     Game flow:
         start_game() → next_problem() → [user answers] → check_answer()
@@ -39,6 +41,7 @@ Architecture:
             "time_limit": 10,      // seconds per problem
             "count_limit": 0,      // 0 = infinite
             "mode": "×",           // "+", "-", "×", "÷", "random"
+            "digits": 1,           // 1, 2, 3, 4, or 0 (random)
             "dark_mode": true
           },
           "games": [
@@ -46,6 +49,7 @@ Architecture:
               "id": 1,
               "timestamp": "2025-07-18T14:30:00",
               "mode": "×",
+              "digits": 1,
               "time_limit": 10,
               "count_limit": 10,
               "score": 8,
@@ -61,7 +65,8 @@ Architecture:
     Adding a new operation:
         1. Add the operator symbol to the THEMES radio buttons list in _build_ui()
         2. Add an elif branch in next_problem() to generate the problem and set self.current_answer
-        3. If using random mode, add the symbol to the random.choice list in next_problem()
+        3. Ensure the branch respects the digits setting for operand ranges
+        4. If using random mode, add the symbol to the random.choice list in next_problem()
 
     Adding a new theme:
         1. Add a new entry to the THEMES dict with all required keys
@@ -71,6 +76,15 @@ Architecture:
     Adding a new stat:
         1. Compute it in _compute_stats() and add to the returned dict
         2. Display it in finish_game() by appending to the lines list
+
+    Digit-aware problem generation:
+        The _digit_range() helper returns (lo, hi) for an n-digit number.
+        Each operation uses this to set operand bounds:
+          +  : a,b from digit range
+          −  : a from upper half of range, b smaller (ensures positive result)
+          ×  : a,b from digit range
+          ÷  : answer from digit range, divisor from digit range, dividend = answer * divisor
+        When digits=0 (random), the actual digit count is picked per-problem from 1–4.
 """
 
 import os
@@ -103,6 +117,7 @@ THEMES = {
 
 # ── Font definitions ─────────────────────────────────────────────────
 # Centralized so all text sizing is in one place.
+# FONT_PROBLEM is not defined here because it scales with digit count.
 
 FONT = ("Arial", 12)
 FONT_SM = ("Arial", 9)
@@ -110,9 +125,12 @@ FONT_LG = ("Arial", 16, "bold")
 FONT_BTN = ("Arial", 11, "bold")
 FONT_TIMER = ("Arial", 22, "bold")
 FONT_FEEDBACK = ("Arial", 20, "bold")
-FONT_PROBLEM = ("Arial", 52, "bold")
 FONT_STATS = ("Consolas", 12)
 FONT_THEME = ("Arial", 13)
+
+# Problem font scales inversely with digit count to fit the window width.
+# The problem text grows as: "8 × 7" (3 chars) → "12 × 34" (7 chars) → "1234 × 5678" (13 chars).
+FONT_PROBLEM = {1: ("Arial", 52, "bold"), 2: ("Arial", 44, "bold"), 3: ("Arial", 38, "bold"), 4: ("Arial", 34, "bold")}
 
 
 # ── Data persistence helpers ─────────────────────────────────────────
@@ -148,13 +166,14 @@ class MathTrainer:
     def __init__(self):
         self.root = tk.Tk()
         self.root.title("Math Trainer")
-        self.root.geometry("540x620")
+        self.root.geometry("540x680")
         self.root.resizable(False, False)
 
         # ── Game state ──
         self.time_limit = tk.IntVar(value=10)    # seconds per problem
         self.count_limit = tk.IntVar(value=0)     # 0 = infinite
         self.mode = tk.StringVar(value="×")       # +, -, ×, ÷, random
+        self.digits = tk.IntVar(value=1)          # 1, 2, 3, 4 digits per operand, or 0 for random
         self.score = self.total = self.remaining = self.target_count = 0
         self.timer_id = self.current_answer = None
         self.waiting_for_next = self.paused = False
@@ -170,6 +189,7 @@ class MathTrainer:
         self.time_limit.set(s.get("time_limit", 10))
         self.count_limit.set(s.get("count_limit", 0))
         self.mode.set(s.get("mode", "×"))
+        self.digits.set(s.get("digits", 1))
         self.dark_mode = s.get("dark_mode", True)
         self.t = THEMES["dark" if self.dark_mode else "light"]
 
@@ -186,10 +206,11 @@ class MathTrainer:
     #   root
     #     main (padding wrapper)
     #       top
-    #         mode_row    — operation radios + theme toggle
+    #         mode_row     — operation radios + theme toggle
+    #         digits_row   — digit count radios
     #         settings_row — time/count spinboxes + start button
-    #       problem_frame — question, answer input, timer, feedback
-    #       bottom        — score, best, pause button
+    #       problem_frame  — question, answer input, timer, feedback
+    #       bottom         — score, best, pause button
 
     def _build_ui(self):
         self.main = tk.Frame(self.root)
@@ -214,6 +235,19 @@ class MathTrainer:
                                    font=FONT_THEME, bd=0, padx=6, pady=0, cursor="hand2")
         self.theme_btn.pack(side=tk.RIGHT)
 
+        # ── Digits selection row ──
+        # Controls operand size: 1 (1–9), 2 (10–99), 3 (100–999), 4 (1000–9999), random (mixed).
+        # Using radio buttons for clean discrete selection.
+        self.digits_row = tk.Frame(self.top)
+        self.digits_row.pack(fill=tk.X, pady=(0, 5))
+
+        self.digits_label = tk.Label(self.digits_row, text="Digits:", font=FONT)
+        self.digits_label.pack(side=tk.LEFT)
+
+        for val, txt in [(1, " 1 "), (2, " 2 "), (3, " 3 "), (4, " 4 "), (0, " 🎲 ")]:
+            ttk.Radiobutton(self.digits_row, text=txt, variable=self.digits, value=val,
+                            style="Mode.TRadiobutton").pack(side=tk.LEFT, padx=(2, 0))
+
         # ── Settings row ──
         self.settings_row = tk.Frame(self.top)
         self.settings_row.pack(fill=tk.X)
@@ -235,6 +269,10 @@ class MathTrainer:
         self.start_btn = ttk.Button(self.settings_row, text="🚀 Start", command=self.start_game, style="Start.TButton")
         self.start_btn.pack(side=tk.RIGHT)
 
+        self.pause_btn = tk.Button(self.settings_row, text="⏸ Pause", command=self.toggle_pause,
+                                   font=FONT_BTN, bd=0, padx=12, pady=4, state="disabled")
+        self.pause_btn.pack(side=tk.RIGHT, padx=(0, 5))
+
         # ── Problem area ──
         self.problem_frame = tk.Frame(self.main, highlightthickness=4, bd=0)
         self.problem_frame.pack(expand=True, fill=tk.BOTH)
@@ -242,7 +280,8 @@ class MathTrainer:
         self.problem_label = ttk.Label(self.problem_frame, text="", style="Problem.TLabel")
         self.problem_label.pack(expand=True, pady=(30, 5))
 
-        self.answer_entry = tk.Entry(self.problem_frame, font=("Arial", 28), width=5, justify="center",
+        # Entry width is set dynamically in next_problem() based on digit count
+        self.answer_entry = tk.Entry(self.problem_frame, font=("Arial", 28), width=10, justify="center",
                                      bd=0, highlightthickness=2)
         self.answer_entry.pack(pady=(0, 5))
         self.answer_entry.bind("<Return>", self.check_answer)
@@ -268,9 +307,8 @@ class MathTrainer:
         self.best_label = ttk.Label(self.bottom, text=f"Best: {best:.0f}%", style="Best.TLabel")
         self.best_label.pack(side=tk.LEFT, padx=(15, 0))
 
-        self.pause_btn = ttk.Button(self.bottom, text="⏸ Pause", command=self.toggle_pause,
-                                    style="Pause.TButton", state="disabled")
-        self.pause_btn.pack(side=tk.RIGHT)
+        self.watermark = tk.Label(self.bottom, text="by PacifistPanda", font=FONT_SM)
+        self.watermark.pack(side=tk.RIGHT, padx=(0, 10))
 
     # ── Theming ──────────────────────────────────────────────────────
     # apply_theme() reads self.t (current theme dict) and applies colors
@@ -283,13 +321,14 @@ class MathTrainer:
         self.root.configure(bg=t["bg"])
 
         # Background frames
-        for w in [self.main, self.top, self.mode_row, self.settings_row, self.bottom]:
+        for w in [self.main, self.top, self.mode_row, self.digits_row, self.settings_row, self.bottom]:
             w.configure(bg=t["bg"])
         self.timer_feedback.configure(bg=t["card"])
 
         # Labels
-        for w in [self.mode_label, self.time_label, self.count_label, self.inf_label]:
+        for w in [self.mode_label, self.digits_label, self.time_label, self.count_label, self.inf_label]:
             w.configure(bg=t["bg"], fg=t["fg"])
+        self.watermark.configure(bg=t["bg"], fg=t["muted"])
         self.theme_btn.configure(bg=t["bg"], fg=t["fg"], activebackground=t["bg"], activeforeground=t["accent"])
 
         # Input widgets
@@ -309,13 +348,12 @@ class MathTrainer:
         s.configure("TButton", background=t["accent"], foreground=t["bg"], borderwidth=0,
                     focusthickness=0, font=FONT_BTN)
         s.map("TButton", background=[("active", t["accent_hover"]), ("disabled", t["btn_disabled"])])
-        s.configure("Pause.TButton", background=t["wrong"], font=FONT_BTN)
-        s.map("Pause.TButton", background=[("active", t["wrong"]), ("disabled", t["btn_disabled"])])
         s.configure("Start.TButton", background=t["correct"], font=FONT_BTN)
         s.map("Start.TButton", background=[("active", t["correct"]), ("disabled", t["btn_disabled"])])
         s.configure("Timer.TLabel", background=t["card"], foreground=t["fg"], font=FONT_TIMER)
         s.configure("Feedback.TLabel", background=t["card"], foreground=t["fg"], font=FONT_FEEDBACK)
-        s.configure("Problem.TLabel", background=t["card"], foreground=t["fg"], font=FONT_PROBLEM)
+        s.configure("Problem.TLabel", background=t["card"], foreground=t["fg"],
+                    font=FONT_PROBLEM[self.digits.get() or 1])
         s.configure("Mode.TRadiobutton", background=t["bg"], foreground=t["fg"], font=FONT_LG)
         s.map("Mode.TRadiobutton", foreground=[("selected", t["accent"])])
         s.configure("Score.TLabel", background=t["bg"], foreground=t["score"], font=FONT_LG)
@@ -326,6 +364,12 @@ class MathTrainer:
         self.feedback_label.configure(background=t["card"])
         self.score_label.configure(background=t["bg"], foreground=t["score"])
         self.best_label.configure(background=t["bg"], foreground=t["muted"])
+
+        # Pause button: red when game active, grey when disabled
+        if str(self.pause_btn["state"]) == "normal":
+            self.pause_btn.configure(bg=t["wrong"], activebackground=t["wrong"], fg=t["bg"])
+        else:
+            self.pause_btn.configure(bg=t["btn_disabled"], activebackground=t["btn_disabled"], fg=t["muted"])
 
     def toggle_theme(self):
         """Switch between dark and light mode, save preference, refresh all colors."""
@@ -349,9 +393,20 @@ class MathTrainer:
             "time_limit": self.time_limit.get(),
             "count_limit": self.count_limit.get(),
             "mode": self.mode.get(),
+            "digits": self.digits.get(),
             "dark_mode": self.dark_mode,
         }
         save_data(self.data_path, self.data)
+
+    @staticmethod
+    def _digit_range(d):
+        """Return (lo, hi) inclusive bounds for a d-digit number.
+        1-digit: (1, 9), 2-digit: (10, 99), 3-digit: (100, 999), 4-digit: (1000, 9999)."""
+        if d == 1:
+            return (1, 9)
+        lo = 10 ** (d - 1)
+        hi = 10 ** d - 1
+        return (lo, hi)
 
     def _compute_stats(self):
         """
@@ -366,6 +421,11 @@ class MathTrainer:
             fastest_solve_today — fastest single-problem solve today
             fastest_solve_all   — fastest single-problem solve ever
             today_count      — number of games played today
+
+        Note: Time-based stats (fastest_game, fastest_solve) compare across
+        all digit settings. A 1-digit game's time is not directly comparable
+        to a 4-digit game's time. For per-digit records, filter games by
+        g.get("digits", 1) before computing.
         """
         games = self.data.get("games", [])
         today = datetime.date.today().isoformat()
@@ -407,9 +467,11 @@ class MathTrainer:
         self.current_problem_times = []
         self.game_start_time = time.time()
         self.start_btn.config(state="disabled")
-        self.pause_btn.config(state="normal", text="⏸ Pause")
+        self.pause_btn.config(state="normal", text="⏸ Pause", bg=self.t["wrong"],
+                              activebackground=self.t["wrong"], fg=self.t["bg"])
         self._save_settings()
-        self.problem_label.config(text="", font=FONT_PROBLEM, anchor="center", justify="center")
+        d = self.digits.get() or 1  # 0 (random) → use 1-digit font as placeholder
+        self.problem_label.config(text="", font=FONT_PROBLEM[d], anchor="center", justify="center")
         self.next_problem()
 
     def next_problem(self):
@@ -417,42 +479,62 @@ class MathTrainer:
         Generate and display the next problem.
 
         For random mode, picks an operation randomly each time.
+        Problem generation respects the digits setting via _digit_range().
+        Adjusts the answer entry width to accommodate the largest possible answer.
         Calls finish_game() if the target count has been reached.
+
+        To add a new operation:
+            1. Add an elif branch below
+            2. Set self.current_answer to the correct answer
+            3. Set the problem_label text to the display string
+            4. Use _digit_range(self.digits.get()) for operand bounds
         """
         if self.target_count > 0 and self.total >= self.target_count:
             self.finish_game()
             return
         self.total += 1
 
+        # Resolve digit count: 0 = random (1–4), otherwise use setting directly
+        d = self.digits.get()
+        if d == 0:
+            d = random.randint(1, 4)
+        lo, hi = self._digit_range(d)
         op = self.mode.get()
         if op == "random":
             op = random.choice(["+", "-", "×", "÷"])
 
-        # Generate problem based on operation
-        # To add a new operation, add an elif branch here:
-        #   elif op == "YOUR_SYMBOL":
-        #       self.current_answer = ...
-        #       self.problem_label.config(text=f"... YOUR_SYMBOL ...")
+        # Generate problem based on operation and digit count
         if op == "+":
-            a, b = random.randint(2, 20), random.randint(2, 20)
+            a = random.randint(lo, hi)
+            b = random.randint(lo, hi)
             self.current_answer = a + b
             self.problem_label.config(text=f"{a} + {b}")
         elif op == "-":
-            a = random.randint(5, 30)
-            b = random.randint(2, a - 1)
+            # a is in the upper half of the range to ensure a − b > 0
+            mid = (lo + hi) // 2
+            a = random.randint(mid, hi)
+            b = random.randint(lo, a - 1)
             self.current_answer = a - b
             self.problem_label.config(text=f"{a} − {b}")
         elif op == "×":
-            a, b = random.randint(2, 9), random.randint(2, 9)
+            a = random.randint(lo, hi)
+            b = random.randint(lo, hi)
             self.current_answer = a * b
             self.problem_label.config(text=f"{a} × {b}")
         elif op == "÷":
-            answer = random.randint(2, 9)
-            divisor = random.randint(2, 9)
+            # Generate answer first, then compute dividend for clean division
+            answer = random.randint(lo, hi)
+            divisor = random.randint(lo, hi)
             self.current_answer = answer
             self.problem_label.config(text=f"{answer * divisor} ÷ {divisor}")
+        else:
+            # Fallback: should not reach here with valid mode values
+            self.current_answer = 0
+            self.problem_label.config(text="?")
 
+        # Adjust entry width and problem font for digit count
         self.answer_entry.config(state="normal")
+        self.style.configure("Problem.TLabel", font=FONT_PROBLEM.get(d, FONT_PROBLEM[1]))
         self.answer_entry.delete(0, tk.END)
         self.answer_entry.focus()
         self.feedback_label.config(text="")
@@ -487,13 +569,13 @@ class MathTrainer:
             return
         if self.paused:
             self.paused = False
-            self.pause_btn.config(text="⏸ Pause")
+            self.pause_btn.config(text="⏸ Pause", bg=self.t["wrong"], activebackground=self.t["wrong"])
             self.answer_entry.config(state="normal")
             self.answer_entry.focus()
             self.timer_id = self.root.after(1000, self._tick)
         else:
             self.paused = True
-            self.pause_btn.config(text="▶ Resume")
+            self.pause_btn.config(text="▶ Resume", bg=self.t["wrong"], activebackground=self.t["wrong"])
             self.answer_entry.config(state="disabled")
             if self.timer_id:
                 self.root.after_cancel(self.timer_id)
@@ -548,7 +630,7 @@ class MathTrainer:
 
         Steps:
         1. Record snapshot of highs before saving (for "new best" detection)
-        2. Append game record to data['games']
+        2. Append game record to data['games'] (includes digits setting)
         3. Compute all stats
         4. Build and display the stats dashboard in problem_label
         5. Update score label with new-best indicator
@@ -572,9 +654,14 @@ class MathTrainer:
         self.data.setdefault("games", []).append({
             "id": len(self.data.get("games", [])) + 1,
             "timestamp": datetime.datetime.now().isoformat(),
-            "mode": self.mode.get(), "time_limit": self.time_limit.get(),
-            "count_limit": self.count_limit.get(), "score": self.score, "total": self.total,
-            "accuracy": round(accuracy, 1), "elapsed_seconds": round(elapsed, 1),
+            "mode": self.mode.get(),
+            "digits": self.digits.get(),
+            "time_limit": self.time_limit.get(),
+            "count_limit": self.count_limit.get(),
+            "score": self.score,
+            "total": self.total,
+            "accuracy": round(accuracy, 1),
+            "elapsed_seconds": round(elapsed, 1),
             "completed_by": "count" if self.target_count > 0 else "time",
             "problem_times": [round(t2, 3) for t2 in self.current_problem_times],
         })
@@ -587,7 +674,8 @@ class MathTrainer:
         # ── Build stats dashboard text ──
         # Each line is formatted as "Label:<padding>Value" for alignment.
         L = 17  # label column width
-        lines = [f"  Done! {self.score}/{self.total} ({accuracy:.0f}%)", ""]
+        d_label = {0: "random", 1: "1-digit", 2: "2-digit", 3: "3-digit", 4: "4-digit"}[self.digits.get()]
+        lines = [f"  Done! {self.score}/{self.total} ({accuracy:.0f}%)  [{d_label}]", ""]
 
         dh = f"{stats['daily_high']:.0f}%" if stats["daily_high"] is not None else "---"
         if stats["today_count"] and stats["today_count"] > 1:
@@ -633,7 +721,8 @@ class MathTrainer:
 
         self.best_label.config(text=f"Best: {self._all_time_best():.0f}%")
         self.start_btn.config(state="normal")
-        self.pause_btn.config(state="disabled")
+        self.pause_btn.config(state="disabled", text="⏸ Pause", bg=self.t["btn_disabled"],
+                              activebackground=self.t["btn_disabled"], fg=self.t["muted"])
 
 
 if __name__ == "__main__":
