@@ -1,0 +1,45 @@
+name: Build and Release
+
+on:
+  release:
+    types: [created]
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PyInstaller
+        run: pip install pyinstaller
+
+      - name: Build English
+        run: pyinstaller --onefile --noconsole --name=MathTrainer_EN multiply_trainer_EN.py
+
+      - name: Build German
+        run: pyinstaller --onefile --noconsole --name=MathTrainer_DE multiply_trainer_de.py
+
+      - name: Build French
+        run: pyinstaller --onefile --noconsole --name=MathTrainer_FR multiply_trainer_fr.py
+
+      - name: Build Spanish
+        run: pyinstaller --onefile --noconsole --name=MathTrainer_ES multiply_trainer_es.py
+
+      - name: Upload to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ github.event.release.tag_name }}" \
+            dist/MathTrainer_EN \
+            dist/MathTrainer_DE \
+            dist/MathTrainer_FR \
+            dist/MathTrainer_ES \
+            --repo "${{ github.repository }}"
